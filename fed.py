@@ -76,8 +76,8 @@ from sklearn.datasets import load_diabetes
 
 import phe as paillier
 
-# from distro_paillier.source import distributed_paillier
-# from distro_paillier.source.distributed_paillier import generate_shared_paillier_key
+from distro_paillier.source import distributed_paillier
+from distro_paillier.source.distributed_paillier import generate_shared_paillier_key
 
 seed = 43
 np.random.seed(seed)
@@ -143,15 +143,15 @@ class Server:
     """Private key holder. Decrypts the average gradient"""
 
     def __init__(self, key_length, n_clients):
-        keypair = paillier.generate_paillier_keypair(n_length=key_length)
-        self.pubkey, self.privkey = keypair
+        # keypair = paillier.generate_paillier_keypair(n_length=key_length)
+        # self.pubkey, self.privkey = keypair
 
-        # Key, pShares, qShares, N, PublicKey, LambdaShares, BetaShares, SecretKeyShares, theta = generate_shared_paillier_key(keyLength = key_length)
+        Key, pShares, qShares, N, PublicKey, LambdaShares, BetaShares, SecretKeyShares, theta = generate_shared_paillier_key(keyLength = key_length)
 
-        # self.prikey = Key
-        # self.pubkey = PublicKey
-        # self.shares = SecretKeyShares
-        # self.theta = theta
+        self.prikey = Key
+        self.pubkey = PublicKey
+        self.shares = SecretKeyShares
+        self.theta = theta
 
         self.n_clients = n_clients
 
@@ -159,14 +159,14 @@ class Server:
         return np.sum(gradients, axis=0) / self.n_clients
 
     def decrypt_gradient(self, gradient):
-        return decrypt_vector(self.privkey, gradient)
-        # dec = np.array([
-        #     self.prikey.decrypt(
-        #         num, self.n_clients, distributed_paillier.CORRUPTION_THRESHOLD, self.pubkey, self.shares, self.theta
-        #     )
-        #     for num in gradient
-        # ])
-        # return dec
+        # return decrypt_vector(self.privkey, gradient)
+        dec = np.array([
+            self.prikey.decrypt(
+                num, self.n_clients, distributed_paillier.CORRUPTION_THRESHOLD, self.pubkey, self.shares, self.theta
+            )
+            for num in gradient
+        ], dtype=np.float64)
+        return dec
 
 
 class Net:
@@ -299,11 +299,11 @@ def local_learning(X, y, X_test, y_test, config):
 
 if __name__ == '__main__':
     config = {
-        'n_clients': 5,
-        'key_length': 1024,
-        # 'n_clients': distributed_paillier.NUMBER_PLAYERS,
-        # 'key_length': distributed_paillier.DEFAULT_KEYSIZE,
-        'n_iter': 30,
+        # 'n_clients': 5,
+        # 'key_length': 1024,
+        'n_clients': distributed_paillier.NUMBER_PLAYERS,
+        'key_length': distributed_paillier.DEFAULT_KEYSIZE,
+        'n_iter': 100,
         'eta': 1.5,
     }
     # load data, train/test split and split training data between clients

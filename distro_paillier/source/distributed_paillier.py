@@ -20,14 +20,14 @@ from gmpy2 import powmod, invert
 import phe
 from phe.util import invert
 
-from shamir_secret_sharing import ShamirSecretSharingScheme as Shamir
-from shamir_secret_sharing_integers import ShamirSecretSharingIntegers as IntegerShamir
-from shamir_secret_sharing_integers import mult_list
+from .shamir_secret_sharing import ShamirSecretSharingScheme as Shamir
+from .shamir_secret_sharing_integers import ShamirSecretSharingIntegers as IntegerShamir
+from .shamir_secret_sharing_integers import mult_list
 
 
-DEFAULT_KEYSIZE = 256 # Bit-length of p and q
-NUMBER_PLAYERS = 3
-CORRUPTION_THRESHOLD = 1
+DEFAULT_KEYSIZE = 1024 # Bit-length of p and q
+NUMBER_PLAYERS = 5
+CORRUPTION_THRESHOLD = 2
 PRIME_THRESHOLD = 20000 # We will check p and q for prime factors up to THRESHOLD. This value should be chosen to minimize runtime.
 MAX_ITERATIONS = 10 # Maximum number of times we will check if rq=0. This value should be chosen to minimize runtime.
 CORRECTNESS_PARAMETER_BIPRIMALITY = 100 # Probability that public key is not biprime = 2^-(STATISTICAL_SECURITY)
@@ -190,7 +190,11 @@ class PaillierSharedKey():
 
         message = ( (combinedDecryption-1)//N * invert(theta, N) ) %N
 
-        return message
+        # Decode (bug of float numbers)
+        encoded = phe.EncodedNumber(PublicKey, message, Ciphertext.exponent)
+        decoded = encoded.decode()
+
+        return decoded
 
     
 ################################################################################

@@ -8,7 +8,7 @@ import sympy as sp
 from gmpy2 import invert
 import secrets
 import warnings
-from shamir_secret_sharing_integers import IntegerShares
+from .shamir_secret_sharing_integers import IntegerShares
 
 class ShamirSecretSharingScheme(object):
 
