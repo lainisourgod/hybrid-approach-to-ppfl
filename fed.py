@@ -69,6 +69,7 @@ Dependencies: numpy, sklearn
 """
 import asyncio
 import random
+import time
 from typing import Iterable
 
 import numpy as np
@@ -296,6 +297,16 @@ def local_learning(X, y, X_test, y_test, config):
         mse = mean_square_error(y_pred, y_test)
         print('{:s}:\t{:.2f}'.format(c.name, mse))
 
+from contextlib import contextmanager
+
+@contextmanager
+def timer():
+    """Helper for measuring runtime"""
+
+    time0 = time.perf_counter()
+    yield
+    print('[elapsed time: %.2f s]' % (time.perf_counter() - time0))
+
 
 if __name__ == '__main__':
     config = {
@@ -309,7 +320,9 @@ if __name__ == '__main__':
     # load data, train/test split and split training data between clients
     X, y, X_test, y_test = get_data(n_clients=config['n_clients'])
     # first each hospital learns a model on its respective dataset for comparison.
-    local_learning(X, y, X_test, y_test, config)
+    with timer():
+        local_learning(X, y, X_test, y_test, config)
 
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(hybrid_learning(X, y, X_test, y_test, config))
+    with timer():
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(hybrid_learning(X, y, X_test, y_test, config))
