@@ -1,7 +1,7 @@
 import asyncio
 import random
 import time
-from multiprocessing import pool
+from multiprocess import Pool
 from typing import Iterable
 
 import numpy as np
@@ -12,10 +12,15 @@ import phe as paillier
 from distro_paillier.source import distributed_paillier
 from distro_paillier.source.distributed_paillier import generate_shared_paillier_key
 
+from model import Net
+
+
 seed = 43
 np.random.seed(seed)
 
-pool = pool(
+# Use separate multiprocessing library because mapped functions are methods,
+# that are not supported with a default library.
+pool = Pool()
 
 
 def get_data(n_clients):
@@ -27,6 +32,7 @@ def get_data(n_clients):
     diabetes = load_diabetes()
     y = diabetes.target
     X = diabetes.data
+
     # Add constant to emulate intercept
     X = np.c_[X, np.ones(X.shape[0])]
 
@@ -76,46 +82,25 @@ class Server:
     def aggregate_gradients(self, gradients: Iterable[np.array]):
         return np.sum(gradients, axis=0) / self.n_clients
 
-    def decrypt_gradient(self, gradient):
-        dec = np.array([
-            self.prikey.decrypt(
+    def decrypt_gradient(self, gradient: np.array):
+        def decrypt_number(num: np.int64):
+            return self.prikey.decrypt(
                 num, self.n_clients, distributed_paillier.CORRUPTION_THRESHOLD, self.pubkey, self.shares, self.theta
             )
-            for num in gradient
-        ], dtype=np.float64)
-        return dec
 
+        decrypted = np.array(list(pool.map(decrypt_number, gradient)), dtype=np.float64)
+        #  decrypted = np.array([
+            #  self.prikey.decrypt(
+                #  num, self.n_clients, distributed_paillier.CORRUPTION_THRESHOLD, self.pubkey, self.shares, self.theta
+            #  )
+            #  for num in gradient
+        #  ], dtype=np.float64)
+        return decrypted
 
-class Net:
-    """
-    Runs linear regression with local data or by gradient steps,
-    where gradient can be passed in.
-    """
-
-    def __init__(self, X, y):
-        self.X, self.y = X, y
-        self.weights = np.zeros(X.shape[1])
-
-    def predict(self, X):
-        """Use model"""
-        return X.dot(self.weights)
-
-    def fit(self, n_iter, eta=0.01):
-        """Linear regression for n_iter"""
-        for _ in range(n_iter):
-            gradient = self.compute_gradient()
-            self.gradient_step(gradient, eta)
-
-    def compute_gradient(self):
-        """
-        Compute the gradient of the current model using the training set
-        """
-        delta = self.predict(self.X) - self.y
-        return delta.dot(self.X) / len(self.X)
-
-    def gradient_step(self, gradient, eta=0.01):
-        """Update the model with the given gradient"""
-        self.weights -= eta * gradient
+def encrypt_vector(pubkey, vector: np.array) -> np.array:
+    assert not np.array([np.isnan(val) for val in vector]).any()
+    results = pool.map(pubkey.encrypt, vector)
+    return np.array(results)
 
 
 class Party:
@@ -141,8 +126,16 @@ class Party:
         """
         gradient = self.model.compute_gradient()
         noisy_gradient = gradient + self.get_noise()
-        sy.pool().map(public_key.encrypt, inputs)
-        encrypted_gradient = np.array([self.pubkey.encrypt(i) for i in noisy_gradient])
+        #  encrypted_gradient_global = encrypt_vector(self.pubkey, noisy_gradient)
+        encrypted_gradient_with_self = np.array(
+            list(
+                pool.map(self.pubkey.encrypt, noisy_gradient)
+            )
+        )
+        #  encrypted_gradient_one_process = np.array([self.pubkey.encrypt(i) for i in noisy_gradient])
+
+        encrypted_gradient = encrypted_gradient_with_self
+
         return encrypted_gradient
 
 
@@ -170,11 +163,13 @@ async def hybrid_learning(X, y, X_test, y_test, config):
     print(f'Running distributed gradient aggregation for {n_iter} iterations')
 
     for i in range(n_iter):
-        gradients = await asyncio.gather(
-            *(
-                client.compute_partial_gradient() for client in clients
+        print("Computing gradients")
+        with timer():
+            gradients = await asyncio.gather(
+                *(
+                    client.compute_partial_gradient() for client in clients
+                )
             )
-        )
 
         aggregate = server.aggregate_gradients(gradients)
 
@@ -229,7 +224,7 @@ if __name__ == '__main__':
     config = {
         'n_clients': distributed_paillier.NUMBER_PLAYERS,
         'key_length': distributed_paillier.DEFAULT_KEYSIZE,
-        'n_iter': 100,
+        'n_iter': 10,
         'eta': 1.5,
     }
 
@@ -237,8 +232,8 @@ if __name__ == '__main__':
     X, y, X_test, y_test = get_data(n_clients=config['n_clients'])
 
     # first each hospital learns a model on its respective dataset for comparison.
-    with timer():
-        local_learning(X, y, X_test, y_test, config)
+    #  with timer():
+        #  local_learning(X, y, X_test, y_test, config)
 
     with timer():
         loop = asyncio.get_event_loop()
