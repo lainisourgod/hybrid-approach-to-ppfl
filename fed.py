@@ -1,75 +1,7 @@
-"""
-This example involves learning using sensitive medical data from multiple hospitals
-to predict diabetes progression in patients. The data is a standard dataset from
-sklearn[1].
-
-Recorded variables are:
-- age,
-- gender,
-- body mass index,
-- average blood pressure,
-- and six blood serum measurements.
-
-The target variable is a quantitative measure of the disease progression.
-Since this measure is continuous, we solve the problem using linear regression.
-
-The patients' data is split between 3 hospitals, all sharing the same features
-but different entities. We refer to this scenario as horizontally partitioned.
-
-The objective is to make use of the whole (virtual) training set to improve
-upon the model that can be trained locally at each hospital.
-
-50 patients will be kept as a test set and not used for training.
-
-An additional agent is the 'server' who facilitates the information exchange
-among the hospitals under the following privacy constraints:
-
-1) The individual patient's record at each hospital cannot leave the premises,
-   not even in encrypted form.
-2) Information derived (read: gradients) from any hospital's dataset
-   cannot be shared, unless it is first encrypted.
-3) None of the parties (hospitals AND server) should be able to infer WHERE
-   (in which hospital) a patient in the training set has been treated.
-
-Note that we do not protect from inferring IF a particular patient's data
-has been used during learning. Differential privacy could be used on top of
-our protocol for addressing the problem. For simplicity, we do not discuss
-it in this example.
-
-In this example linear regression is solved by gradient descent. The server
-creates a paillier public/private keypair and does not share the private key.
-The hospital clients are given the public key. The protocol works as follows.
-Until convergence: hospital 1 computes its gradient, encrypts it and sends it
-to hospital 2; hospital 2 computes its gradient, encrypts and sums it to
-hospital 1's; hospital 3 does the same and passes the overall sum to the
-server. The server obtains the gradient of the whole (virtual) training set;
-decrypts it and sends the gradient back - in the clear - to every client.
-The clients then update their respective local models.
-
-From the learning viewpoint, notice that we are NOT assuming that each
-hospital sees an unbiased sample from the same patients' distribution:
-hospitals could be geographically very distant or serve a diverse population.
-We simulate this condition by sampling patients NOT uniformly at random,
-but in a biased fashion.
-The test set is instead an unbiased sample from the overall distribution.
-
-From the security viewpoint, we consider all parties to be "honest but curious".
-Even by seeing the aggregated gradient in the clear, no participant can pinpoint
-where patients' data originated. This is true if this RING protocol is run by
-at least 3 clients, which prevents reconstruction of each others' gradients
-by simple difference.
-
-This example was inspired by Google's work on secure protocols for federated
-learning[2].
-
-[1]: http://scikit-learn.org/stable/datasets/index.html#diabetes-dataset
-[2]: https://research.googleblog.com/2017/04/federated-learning-collaborative.html
-
-Dependencies: numpy, sklearn
-"""
 import asyncio
 import random
 import time
+from multiprocessing import pool
 from typing import Iterable
 
 import numpy as np
@@ -82,6 +14,8 @@ from distro_paillier.source.distributed_paillier import generate_shared_paillier
 
 seed = 43
 np.random.seed(seed)
+
+pool = pool(
 
 
 def get_data(n_clients):
@@ -126,28 +60,11 @@ def mean_square_error(y_pred, y):
     return np.mean((y - y_pred) ** 2)
 
 
-def encrypt_vector(public_key, x):
-    return np.array([public_key.encrypt(i) for i in x])
-
-
-def decrypt_vector(private_key, x):
-    return np.array([private_key.decrypt(i) for i in x])
-
-
-def sum_encrypted_vectors(x, y):
-    if len(x) != len(y):
-        raise ValueError('Encrypted vectors must have the same size')
-    return x + y
-
-
 class Server:
     """Private key holder. Decrypts the average gradient"""
 
     def __init__(self, key_length, n_clients):
-        # keypair = paillier.generate_paillier_keypair(n_length=key_length)
-        # self.pubkey, self.privkey = keypair
-
-        Key, pShares, qShares, N, PublicKey, LambdaShares, BetaShares, SecretKeyShares, theta = generate_shared_paillier_key(keyLength = key_length)
+        Key, _, _, _, PublicKey, _, _, SecretKeyShares, theta = generate_shared_paillier_key(keyLength = key_length)
 
         self.prikey = Key
         self.pubkey = PublicKey
@@ -160,7 +77,6 @@ class Server:
         return np.sum(gradients, axis=0) / self.n_clients
 
     def decrypt_gradient(self, gradient):
-        # return decrypt_vector(self.privkey, gradient)
         dec = np.array([
             self.prikey.decrypt(
                 num, self.n_clients, distributed_paillier.CORRUPTION_THRESHOLD, self.pubkey, self.shares, self.theta
@@ -210,13 +126,12 @@ class Party:
         self.name = name
         self.model = Net(X, y)
         self.pubkey = pubkey
-  
+
     def get_noise(self):
         """
         Differential privacy simulation xD
         """
         return random.random() * 0.01
-        # return 0
 
     async def compute_partial_gradient(self):
         """
@@ -226,13 +141,15 @@ class Party:
         """
         gradient = self.model.compute_gradient()
         noisy_gradient = gradient + self.get_noise()
-        encrypted_gradient = encrypt_vector(self.pubkey, noisy_gradient)
+        sy.pool().map(public_key.encrypt, inputs)
+        encrypted_gradient = np.array([self.pubkey.encrypt(i) for i in noisy_gradient])
         return encrypted_gradient
 
 
 async def hybrid_learning(X, y, X_test, y_test, config):
     """
     Performs learning with hybrid approach.
+    Uses asyncio for emulating different parties.
     """
     n_clients = config['n_clients']
     n_iter = config['n_iter']
@@ -267,7 +184,7 @@ async def hybrid_learning(X, y, X_test, y_test, config):
         # Take gradient steps
         for c in clients:
             c.model.gradient_step(aggregate, config['eta'])
-        
+
         if i % 10 == 1:
             print(f'Epoch {i}')
 
@@ -297,8 +214,8 @@ def local_learning(X, y, X_test, y_test, config):
         mse = mean_square_error(y_pred, y_test)
         print('{:s}:\t{:.2f}'.format(c.name, mse))
 
-from contextlib import contextmanager
 
+from contextlib import contextmanager
 @contextmanager
 def timer():
     """Helper for measuring runtime"""
@@ -310,15 +227,15 @@ def timer():
 
 if __name__ == '__main__':
     config = {
-        # 'n_clients': 5,
-        # 'key_length': 1024,
         'n_clients': distributed_paillier.NUMBER_PLAYERS,
         'key_length': distributed_paillier.DEFAULT_KEYSIZE,
         'n_iter': 100,
         'eta': 1.5,
     }
+
     # load data, train/test split and split training data between clients
     X, y, X_test, y_test = get_data(n_clients=config['n_clients'])
+
     # first each hospital learns a model on its respective dataset for comparison.
     with timer():
         local_learning(X, y, X_test, y_test, config)
@@ -326,3 +243,4 @@ if __name__ == '__main__':
     with timer():
         loop = asyncio.get_event_loop()
         loop.run_until_complete(hybrid_learning(X, y, X_test, y_test, config))
+

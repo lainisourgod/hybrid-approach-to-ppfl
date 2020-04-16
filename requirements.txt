@@ -2,4 +2,5 @@
 phe
 gmpy2
 sympy
+sklearn
 
