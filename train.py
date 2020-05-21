@@ -43,22 +43,33 @@ class Trainer:
             for _ in range(config.n_clients)
         ]
 
+    def separate_clients_batches(self, features, target):
+        batches = []
+
+        for party_index in range(config.n_clients):
+            features_party = features[party_index::config.n_clients]
+            target_party = target[party_index::config.n_clients]
+            batches.append((features_party, target_party))
+
+        return batches
 
     async def fit(self):
         for epoch in range(config.n_epochs):
-            for batches_for_epoch in self.train_loader:
+            for batch_idx, (features, target) in enumerate(self.train_loader):
+                batches_for_epoch = self.separate_clients_batches(features, target)
+
                 encrypted_models = await asyncio.gather(
                     *(
-                        party.train_one_epoch(batches_for_epoch)
+                        party.train_one_epoch(batch)
                         for party, batch
                         in zip(self.parties, batches_for_epoch)
                     )
                 )
 
-                aggregate = server.aggregate_params(encrypted_models)
+                aggregate = self.server.aggregate_params(encrypted_models)
 
                 # Decrypted
-                new_params = server.decrypt_aggregate_params(aggregate)
+                new_params = self.server.decrypt_aggregate_params(aggregate)
 
                 # Take gradient steps
                 await asyncio.gather(
@@ -66,4 +77,6 @@ class Trainer:
                         party.update_params(new_params) for party in self.parties
                     )
                 )
+
+                print(f"Epoch {epoch} Batch {batch_idx}")
 

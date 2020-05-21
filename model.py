@@ -3,7 +3,7 @@ from typing import List
 import numpy as np
 import torch
 from torch import Tensor
-from torch.nn import Linear
+from torch.nn import Linear, Parameter
 from torch.optim import Adam
 from torch.functional import F
 
@@ -28,14 +28,14 @@ class Model(torch.nn.Module):
             )
         )
 
-    def training_step(self, batch: Batch) -> List[torch.nn.Parameter]:
+    def training_step(self, batch) -> List[Parameter]:
         """Forward and backward pass"""
-        for (features, target) in batch:
-            self.optimizer.zero_grad()
-            pred = self.forward(features)
-            loss: Tensor = F.nll_loss(pred, target)
-            loss.backward()
-            self.optimizer.step()
+        features, target = batch
+        self.optimizer.zero_grad()
+        pred = self.forward(features)
+        loss: Tensor = F.nll_loss(pred, target)
+        loss.backward()
+        self.optimizer.step()
 
         return list(self.parameters())
 

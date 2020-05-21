@@ -24,17 +24,6 @@ def timer():
     print('[elapsed time: %.2f s]' % (time.perf_counter() - time0))
 
 
-
-def separate_clients_batches(original_batch: Batch) -> List[Batch]:
-    batches = []
-
-    for client_index in range(config.n_clients):
-        client_batch = original_batch[client_index::config.n_clients]
-        batches.append(client_batch)
-
-    return batches
-
-
 def configure_dataloaders(data_dir: Path) -> Tuple[DataLoader, DataLoader]:
     def create_loader(is_train_loader):
         return DataLoader(

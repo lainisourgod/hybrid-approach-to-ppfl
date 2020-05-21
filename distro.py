@@ -1,13 +1,14 @@
 # Use separate multiprocessing library because mapped functions are methods,
 # that are not supported with a default library.
 import random
-from multiprocess import Pool
+from multiprocessing import Pool
 from typing import Iterable, List
 
 import numpy as np
 import phe
 import torch
 from torch import Tensor
+from torch.nn import Parameter
 from torch.optim import Adam, Optimizer
 
 from distro_paillier.source import distributed_paillier
@@ -17,7 +18,7 @@ from config import config
 from model import Model
 
 
-pool = Pool()
+EncryptedParameter = np.ndarray  # [phe.EncryptedNumber]
 
 
 class Server:
@@ -41,29 +42,30 @@ class Server:
         """
         return np.mean(gradients_of_parties, axis=0)
 
-    def decrypt_aggregate_params(self, aggregate_params: np.ndarray) -> torch.Tensor:
+    def decrypt_number(self, num: phe.EncryptedNumber):
+        return self.prikey.decrypt(
+            num, config.n_clients, distributed_paillier.CORRUPTION_THRESHOLD, self.pubkey, self.shares, self.theta
+        )
+
+    def decrypt_aggregate_params(self, aggregate_params: np.ndarray) -> List[Tensor]:
         """
         Take encrypted aggregate params.
         Return decrypted params.
         """
-        def decrypt_number(num: np.int64):
-            return self.prikey.decrypt(
-                num, config.n_clients, distributed_paillier.CORRUPTION_THRESHOLD, self.pubkey, self.shares, self.theta
+        decrypted_params: List[Parameter] = []
+
+        for param in aggregate_params:
+            # To list so we can use decrypt on it
+            flattened = param.tolist()
+
+            decrypted_param = Tensor(
+                [self.decrypt_number(num) for num in flattened],
+                #  dtype=torch.float64,
             )
 
-        # Firstly, flatten the tensor so we can decrypt every number separately
-        flattened = aggregate_params.view(-1)
+            decrypted_params.append(decrypted_param)
 
-        # Decrypt every number in parallel
-        decrypted_flat = Tensor(
-            pool.map(decrypt_number, flattened),  # XXX: maybe should make flattened a list?
-            dtype=torch.float64,
-        )
-
-        # Restore gradient shape
-        decrypted = decrypted_flat.view_as(aggregate_params.shape)
-
-        return decrypted
+        return decrypted_params
 
 
 class Party:
@@ -76,20 +78,23 @@ class Party:
 
         self.pubkey = pubkey
 
-    def add_noise_to_param(self, param: Tensor):
+    def add_noise_to_param(self, param: Parameter) -> Parameter:
         """
         Differential privacy simulation xD
         param: 1-d tensor
         """
-        return torch.Tensor([num + random.random() for num in param])
+        noise = torch.Tensor([random.random() for _ in range(len(param))])
+        return param + noise
 
-    def train_one_epoch(self, batch) -> np.ndarray:
+    async def train_one_epoch(self, batch) -> List[EncryptedParameter]:
         """
-        1. Take model parameters.
-        2. Add noise to them.
-        3. Encrypt them.
+        1. Train one epoch (including backward pass).
+        2. Take parameters of model after epoch.
+        3. Flatten parameters so we can apply transformations on every element of param.
+        3. Add noise to them.
+        4. Encrypt them.
 
-        Return List[np.ndarray[phe.EncryptedNumber]].
+        Return list of flattened encrypted params.
         """
         self.model.training_step(batch)
 
@@ -98,17 +103,28 @@ class Party:
 
         # TODO: maybe map all this operations to pool?
         for param in params:
+            # Flatten
             flattened = param.data.view(-1)
-            noised = self.add_noise_to_param()
-            encrypted = np.ndarray(
-                pool.map(self.pubkey.encrypt, noised),
-                dtype=np.object,
-            )
+
+            # Add noise for diffential privacy
+            noised = self.add_noise_to_param(flattened)
+
+            # Convert to list so phe can work with it
+            noised = noised.tolist()
+
+            # Encrypt in multiprocessing
+            encrypted: EncryptedParameter = np.array([self.pubkey.encrypt(num) for num in noised])
             encrypted_params.append(encrypted)
 
         return encrypted_params
 
-    def update_params(self, params: torch.Tensor) -> None:
+    async def update_params(self, new_params: Tensor) -> None:
+        """
+        Copy data from new parameters into party's model.
+        Async because party can be somewhere far away...
+        """
         with torch.no_grad():
-            self.model.parameters = params
+            for model_param, new_param in zip(self.model.parameters(), new_params):
+                # Reshape new param and assign into model
+                model_param.data = new_param.view_as(model_param.data)
 
