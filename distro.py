@@ -1,8 +1,8 @@
 # Use separate multiprocessing library because mapped functions are methods,
 # that are not supported with a default library.
 import random
-from multiprocessing import Pool
-from typing import Iterable, List
+from multiprocess import Pool, cpu_count
+from typing import Callable, Iterable, List
 
 import numpy as np
 import phe
@@ -18,7 +18,13 @@ from config import config
 from model import Model
 
 
+n_cpus = cpu_count()
+
+pool = Pool(processes=n_cpus - 3)
 EncryptedParameter = np.ndarray  # [phe.EncryptedNumber]
+
+
+decrypt: Callable
 
 
 class Server:
@@ -34,6 +40,16 @@ class Server:
         self.pubkey = PublicKey
         self.shares = SecretKeyShares
         self.theta = theta
+
+        global decrypt
+        decrypt = lambda cipher: Key.decrypt(
+                    Ciphertext=cipher,
+                    n=config.n_clients,
+                    t=distributed_paillier.CORRUPTION_THRESHOLD,
+                    PublicKey=PublicKey,
+                    SecretKeyShares=SecretKeyShares,
+                    theta=theta
+                )
 
     def aggregate_params(self, gradients_of_parties: np.ndarray) -> np.ndarray:
         """
@@ -59,7 +75,8 @@ class Server:
             flattened = param.tolist()
 
             decrypted_param = Tensor(
-                [self.decrypt_number(num) for num in flattened],
+                #  [self.decrypt_number(num) for num in flattened],
+                pool.map(decrypt, flattened)
                 #  dtype=torch.float64,
             )
 
@@ -113,7 +130,8 @@ class Party:
             noised = noised.tolist()
 
             # Encrypt in multiprocessing
-            encrypted: EncryptedParameter = np.array([self.pubkey.encrypt(num) for num in noised])
+            #  encrypted: EncryptedParameter = np.array([self.pubkey.encrypt(num) for num in noised])
+            encrypted: EncryptedParameter = np.array(pool.map(self.pubkey.encrypt, noised))
             encrypted_params.append(encrypted)
 
         return encrypted_params
