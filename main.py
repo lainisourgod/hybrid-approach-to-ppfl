@@ -54,7 +54,8 @@ if __name__ == '__main__':
         valid_loader=loaders[1],
     )
 
-    loop = asyncio.get_event_loop()
+    #  loop = asyncio.get_event_loop()
     with timer():
-        loop.run_until_complete(trainer.fit())
+        #  loop.run_until_complete(trainer.fit())
+        trainer.fit()
 

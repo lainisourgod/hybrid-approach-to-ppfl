@@ -86,7 +86,7 @@ class Party:
         noise = torch.Tensor([random.random() for _ in range(len(param))])
         return param + noise
 
-    async def train_one_epoch(self, batch) -> List[EncryptedParameter]:
+    def train_one_epoch(self, batch) -> List[EncryptedParameter]:
         """
         1. Train one epoch (including backward pass).
         2. Take parameters of model after epoch.
@@ -118,7 +118,7 @@ class Party:
 
         return encrypted_params
 
-    async def update_params(self, new_params: Tensor) -> None:
+    def update_params(self, new_params: Tensor) -> None:
         """
         Copy data from new parameters into party's model.
         Async because party can be somewhere far away...
