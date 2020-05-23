@@ -53,6 +53,9 @@ if __name__ == '__main__':
         valid_loader=loaders[1],
     )
 
-    with timer():
+    try:
         trainer.fit()
+    except KeyboardInterrupt:
+        exit(0)
+
 
