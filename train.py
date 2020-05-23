@@ -80,7 +80,7 @@ class Trainer:
                     party.update_params(new_params)
 
                 # Test
-                if batch_idx % config.test_every:
+                if batch_idx % config.test_every == 0:
                     # Update local model for test
                     self.model.update_params(new_params)
                     self.test_model()
@@ -92,7 +92,7 @@ class Trainer:
         with torch.no_grad():
             for features, target in self.valid_loader:
                 features, target = features.to(config.device), target.to(config.device)
-                output = model(features)
+                output = self.model(features)
                 test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
                 correct += pred.eq(target.view_as(pred)).sum().item()

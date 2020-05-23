@@ -38,7 +38,6 @@ def configure_dataloaders(data_dir: Path) -> Tuple[DataLoader, DataLoader]:
             ),
             # yield batches for every client
             batch_size=config.n_clients * config.batch_size,
-            #  collate_fn=separate_clients_batches,
         )
 
     return (create_loader(True), create_loader(False))
@@ -54,8 +53,6 @@ if __name__ == '__main__':
         valid_loader=loaders[1],
     )
 
-    #  loop = asyncio.get_event_loop()
     with timer():
-        #  loop.run_until_complete(trainer.fit())
         trainer.fit()
 

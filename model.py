@@ -31,6 +31,7 @@ class Model(torch.nn.Module):
     def training_step(self, batch) -> List[Parameter]:
         """Forward and backward pass"""
         features, target = batch
+        features, target = features.to(config.device), target.to(config.device)
         self.optimizer.zero_grad()
         pred = self.forward(features)
         loss: Tensor = F.nll_loss(pred, target)
@@ -39,6 +40,11 @@ class Model(torch.nn.Module):
 
         return list(self.parameters())
 
+    def update_params(self, new_params: Tensor) -> None:
+        with torch.no_grad():
+            for model_param, new_param in zip(self.parameters(), new_params):
+                # Reshape new param and assign into model
+                model_param.data = new_param.view_as(model_param.data).to(config.device)
 
 class Net:
     """

@@ -7,8 +7,8 @@ from torch import Tensor
 
 @dataclass
 class Config:
-    n_clients: int = 5
-    batch_size: int = 16
+    n_clients: int = 4
+    batch_size: int = 64
     key_length: int = 128
     n_epochs: int = 10
     learning_rate: float = 0.001

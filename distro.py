@@ -1,5 +1,6 @@
 # Use separate multiprocessing library because mapped functions are methods,
 # that are not supported with a default library.
+import copy
 import random
 from multiprocess import Pool, cpu_count
 from typing import Callable, Iterable, List
@@ -90,7 +91,7 @@ class Party:
     Using public key can encrypt locally trained model.
     """
     def __init__(self, pubkey: phe.PaillierPublicKey, model: Model):
-        self.model = model
+        self.model: Model = copy.deepcopy(model).to(config.device)
         self.optimizer = Adam(self.model.parameters(), lr=0.02)
 
         self.pubkey = pubkey
@@ -100,7 +101,7 @@ class Party:
         Differential privacy simulation xD
         param: 1-d tensor
         """
-        noise = torch.Tensor([random.random() for _ in range(len(param))])
+        noise = torch.Tensor([random.random() for _ in range(len(param))]).to(config.device)
         return param + noise
 
     def train_one_epoch(self, batch) -> List[EncryptedParameter]:
@@ -141,8 +142,5 @@ class Party:
         Copy data from new parameters into party's model.
         Async because party can be somewhere far away...
         """
-        with torch.no_grad():
-            for model_param, new_param in zip(self.model.parameters(), new_params):
-                # Reshape new param and assign into model
-                model_param.data = new_param.view_as(model_param.data)
+        self.model.update_params(new_params)
 
