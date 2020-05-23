@@ -58,13 +58,8 @@ class Trainer:
             for batch_idx, (features, target) in enumerate(self.train_loader):
                 batches_for_epoch = self.separate_clients_batches(features, target)
 
-                #  encrypted_models = await asyncio.gather(
-                    #  *(
-                        #  party.train_one_epoch(batch)
-                        #  for party, batch
-                        #  in zip(self.parties, batches_for_epoch)
-                    #  )
-                #  )
+                # Divide one big batch into parties' batches
+                batches_for_epoch = self.separate_clients_batches(features, target)
 
                 encrypted_models = [
                     party.train_one_epoch(batch)
@@ -77,13 +72,7 @@ class Trainer:
                 # Decrypted
                 new_params = self.server.decrypt_aggregate_params(aggregate)
 
-                # Take gradient steps
-                #  await asyncio.gather(
-                    #  *(
-                        #  party.update_params(new_params) for party in self.parties
-                    #  )
-                #  )
-
+                # Update before next epoch
                 for party in self.parties:
                     party.update_params(new_params)
 
