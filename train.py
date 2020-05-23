@@ -56,8 +56,9 @@ class Trainer:
 
     def fit(self):
         for epoch in range(config.n_epochs):
+            epoch_start = time.time()
             for batch_idx, (features, target) in enumerate(self.train_loader):
-                print(f"Epoch {epoch} Batch {batch_idx}")
+                print(f"Epoch {epoch} Batch {batch_idx} Time {time.time() - epoch_start:.4}")
 
                 # Divide one big batch into parties' batches
                 batches_for_epoch = self.separate_clients_batches(features, target)

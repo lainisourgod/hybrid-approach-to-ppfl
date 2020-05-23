@@ -5,6 +5,7 @@ import random
 from multiprocess import Pool, cpu_count
 from typing import Callable, Iterable, List
 
+import diffprivlib as dp
 import numpy as np
 import phe
 import torch
@@ -24,6 +25,8 @@ n_cpus = cpu_count()
 pool = Pool(processes=n_cpus - 3)
 EncryptedParameter = np.ndarray  # [phe.EncryptedNumber]
 
+use_pool = True
+
 
 decrypt: Callable
 
@@ -35,6 +38,7 @@ class Server:
         Key, _, _, _, PublicKey, _, _, SecretKeyShares, theta = generate_shared_paillier_key(
             keyLength=config.key_length,
             n=config.n_clients,
+            t=config.threshold,
         )
 
         self.prikey = Key
@@ -46,7 +50,7 @@ class Server:
         decrypt = lambda cipher: Key.decrypt(
                     Ciphertext=cipher,
                     n=config.n_clients,
-                    t=distributed_paillier.CORRUPTION_THRESHOLD,
+                    t=config.threshold,
                     PublicKey=PublicKey,
                     SecretKeyShares=SecretKeyShares,
                     theta=theta
@@ -54,15 +58,16 @@ class Server:
 
     def aggregate_params(self, gradients_of_parties: np.ndarray) -> np.ndarray:
         """
-        Take an array of encrypted parameters of models from all parties. Shape: (n_parties, ...)
+        Take an array of encrypted parameters of models from all partieprime_threshold)
         Return array of mean encrypted params.
         """
         return np.mean(gradients_of_parties, axis=0)
 
-    def decrypt_number(self, num: phe.EncryptedNumber):
-        return self.prikey.decrypt(
-            num, config.n_clients, distributed_paillier.CORRUPTION_THRESHOLD, self.pubkey, self.shares, self.theta
-        )
+    def decrypt_param(self, param):
+        if use_pool:
+            return pool.map(decrypt, param)
+        else:
+            return [decrypt(num) for num in param]
 
     def decrypt_aggregate_params(self, aggregate_params: np.ndarray) -> List[Tensor]:
         """
@@ -75,11 +80,7 @@ class Server:
             # To list so we can use decrypt on it
             flattened = param.tolist()
 
-            decrypted_param = Tensor(
-                #  [self.decrypt_number(num) for num in flattened],
-                pool.map(decrypt, flattened)
-                #  dtype=torch.float64,
-            )
+            decrypted_param = Tensor(self.decrypt_param(flattened))
 
             decrypted_params.append(decrypted_param)
 
@@ -95,14 +96,27 @@ class Party:
         self.optimizer = Adam(self.model.parameters(), lr=0.02)
 
         self.pubkey = pubkey
+        self.randomiser = dp.mechanisms.Gaussian().set_epsilon_delta(0.5, 0.001).set_sensitivity(0.1)
 
-    def add_noise_to_param(self, param: Parameter) -> Parameter:
+    def add_noise_to_param(self, param: Parameter) -> Tensor:
         """
-        Differential privacy simulation xD
-        param: 1-d tensor
+        Add noise from diffential privacy mechanism.
+        param: 1-D (flattened) Parameter
+        return Tensor of param's data with applied DP.
         """
-        noise = torch.Tensor([random.random() for _ in range(len(param))]).to(config.device)
-        return param + noise
+        param_mean = param.data.mean()
+        param_std = param.data.std()
+
+        # Scale to normal distribution as distribution of randomiser is normal
+        param_in_normal_distribution = (param.data - param_mean) / param_std
+
+        randomised = [self.randomiser.randomise(num.item()) for num in param_in_normal_distribution]
+        randomised_tensor = torch.Tensor(randomised).to(config.device)
+
+        # Rescale results back
+        randomised_tensor = randomised_tensor * param_std + param_mean
+
+        return randomised_tensor
 
     def train_one_epoch(self, batch) -> List[EncryptedParameter]:
         """
@@ -126,16 +140,22 @@ class Party:
 
             # Add noise for diffential privacy
             noised = self.add_noise_to_param(flattened)
+            print(f"diff: {((noised - flattened).abs() / flattened).mean():.3}")
 
             # Convert to list so phe can work with it
             noised = noised.tolist()
 
             # Encrypt in multiprocessing
-            #  encrypted: EncryptedParameter = np.array([self.pubkey.encrypt(num) for num in noised])
-            encrypted: EncryptedParameter = np.array(pool.map(self.pubkey.encrypt, noised))
+            encrypted: EncryptedParameter = self.encrypt_param(noised)
             encrypted_params.append(encrypted)
 
         return encrypted_params
+
+    def encrypt_param(self, param):
+        if use_pool:
+            return np.array(pool.map(self.pubkey.encrypt, param))
+        else:
+            return np.array([self.pubkey.encrypt(num) for num in param])
 
     def update_params(self, new_params: Tensor) -> None:
         """
