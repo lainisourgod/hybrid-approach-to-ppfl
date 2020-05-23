@@ -26,8 +26,8 @@ from .shamir_secret_sharing_integers import mult_list
 
 
 DEFAULT_KEYSIZE = 1024 # Bit-length of p and q
-NUMBER_PLAYERS = 5
-CORRUPTION_THRESHOLD = 2
+NUMBER_PLAYERS = 4
+CORRUPTION_THRESHOLD = 1
 PRIME_THRESHOLD = 20000 # We will check p and q for prime factors up to THRESHOLD. This value should be chosen to minimize runtime.
 MAX_ITERATIONS = 10 # Maximum number of times we will check if rq=0. This value should be chosen to minimize runtime.
 CORRECTNESS_PARAMETER_BIPRIMALITY = 100 # Probability that public key is not biprime = 2^-(STATISTICAL_SECURITY)
@@ -123,10 +123,10 @@ class PaillierSharedKey():
     """
     Class containing relevant attributes and methods of a shared paillier key.
     """
-    
+
     def __init__(self, keyLength, n, t, threshold, iterations):
-        # The keyLength is the size (in bits) of the RSA-modulus N. 
-        # Note that N is the product of two primes. 
+        # The keyLength is the size (in bits) of the RSA-modulus N.
+        # Note that N is the product of two primes.
         # Hence, the size of the primes is half the keyLength.
         self.keyLength = keyLength
         self.n = n
@@ -139,7 +139,7 @@ class PaillierSharedKey():
          Everty party picks a random share in [2^(length-1),2^length -1].
          Party 1 randomly samples an integer equal to 3 modulo 4.
          The other parties sample integers equal to 0 modulo 4.
-         The resulting integers are additive shares of an integer equal to 
+         The resulting integers are additive shares of an integer equal to
          3 modulo 4.
          """
         primeArray = {i:1 for i in range(1,n+1)}
@@ -150,7 +150,6 @@ class PaillierSharedKey():
             while primeArray[i] % 4 != 0:
                 primeArray[i] = 2**(length-1)+secrets.randbits(length-1)
         return primeArray
-
 
     def decrypt(self, Ciphertext, n, t, PublicKey, SecretKeyShares, theta):
         """
@@ -169,16 +168,28 @@ class PaillierSharedKey():
         c = Ciphertext.ciphertext()
         N = PublicKey.n
         NSquare = N**2
-        shares = SecretKeyShares.shares
-        degree = SecretKeyShares.degree
+        shares: dict = SecretKeyShares.shares
+        degree: int = SecretKeyShares.degree
 
-        # NB: Here the reconstruction set is implicity defined, but any 
+        # NB: Here the reconstruction set is implicity defined, but any
         # large enough subset of shares will do.
-        reconstruction_shares = {key: shares[key] for key in list(shares.keys())[:degree+1]}
+        # shares: {1: 1254t4, 2: 1182471924, 3: 381284}
+        # move to list because WTF we use dict with int keys here???
+        shares = list(shares.values())
+        reconstruction_shares = shares[:degree+1]
 
-        lagrange_interpol_enum = {i: mult_list([j for j in reconstruction_shares.keys() if i != j]) for i in reconstruction_shares.keys()}
-        lagrange_interpol_denom = {i: mult_list([(j - i) for j in reconstruction_shares.keys() if i != j]) for i in reconstruction_shares.keys()}
-        exponents = [ (nFac * lagrange_interpol_enum[i] * reconstruction_shares[i]) // lagrange_interpol_denom[i] for i in reconstruction_shares.keys() ]
+        lagrange_interpol_enum = [
+            mult_list([j for j in range(1, len(reconstruction_shares) + 1) if i != j])
+            for i in range(1, len(reconstruction_shares) + 1)
+        ]
+        lagrange_interpol_denom = [
+            mult_list([(j - i) for j in range(1, len(reconstruction_shares) + 1) if i != j])
+            for i in range(1, len(reconstruction_shares) + 1)
+        ]
+        exponents = [
+            (nFac * lagrange_interpol_enum[i] * reconstruction_shares[i]) // lagrange_interpol_denom[i]
+            for i in range(len(reconstruction_shares))
+        ]
 
         # Notice that the partial decryption is already raised to the power given
         # by the Lagrange interpolation coefficient
@@ -196,7 +207,7 @@ class PaillierSharedKey():
 
         return decoded
 
-    
+
 ################################################################################
 """
     High-level functions
@@ -305,7 +316,7 @@ def is_biprime_parametrized(N, pShares, qShares, testValue):
     """
     Test whether N is the product of two primes.
     If so, this test will succeed with probability 1.
-    If N is not the product of two primes, the test will fail with at least 
+    If N is not the product of two primes, the test will fail with at least
     probability 1/2.
     """
 
