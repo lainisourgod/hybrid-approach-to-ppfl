@@ -40,7 +40,15 @@ STATISTICAL_SECURITY_SECRET_SHARING = 40 # Statistical security parameter for Sh
 """
 ################################################################################
 
-def generate_shared_paillier_key( keyLength = DEFAULT_KEYSIZE, n = NUMBER_PLAYERS, t = CORRUPTION_THRESHOLD, threshold = PRIME_THRESHOLD, it = MAX_ITERATIONS, correctParamPrime = CORRECTNESS_PARAMETER_BIPRIMALITY, statSecShamir = STATISTICAL_SECURITY_SECRET_SHARING):
+def generate_shared_paillier_key(
+    keyLength=DEFAULT_KEYSIZE,
+    n=NUMBER_PLAYERS,
+    t=CORRUPTION_THRESHOLD,
+    prime_threshold=PRIME_THRESHOLD,
+    it=MAX_ITERATIONS,
+    correctParamPrime=CORRECTNESS_PARAMETER_BIPRIMALITY,
+    statSecShamir=STATISTICAL_SECURITY_SECRET_SHARING
+):
     """
     Main code to obtain a Paillier public key N
     and shares of the private key.
@@ -51,12 +59,12 @@ def generate_shared_paillier_key( keyLength = DEFAULT_KEYSIZE, n = NUMBER_PLAYER
 
     smallPrimeTest = True
 
-    if primeLength < math.log(threshold,2):
-        threshold = 1
+    if primeLength < math.log(prime_threshold,2):
+        prime_threshold = 1
 
     print('Bit-length of primes: ', primeLength)
 
-    Key = PaillierSharedKey(primeLength, n, t, threshold, it )
+    Key = PaillierSharedKey(primeLength, n, t, prime_threshold, it )
 
     print('Starting generation of p, q and N...')
     success = 0
@@ -66,7 +74,7 @@ def generate_shared_paillier_key( keyLength = DEFAULT_KEYSIZE, n = NUMBER_PLAYER
 
     # Here we define the small primes considered in small prime test.
     # The generated p and q are both 3 mod 4, hence we do not have to check for divisibility by 2.
-    primeList = [p for p in sympy.primerange(3, threshold + 1)]
+    primeList = [p for p in sympy.primerange(3, prime_threshold + 1)]
 
     while success == 0:
         # Generate the factors p and q
