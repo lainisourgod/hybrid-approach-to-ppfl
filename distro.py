@@ -97,7 +97,7 @@ class Party:
         self.optimizer = Adam(self.model.parameters(), lr=config.learning_rate)
 
         self.pubkey = pubkey
-        self.randomiser = dp.mechanisms.Gaussian().set_epsilon_delta(0.5, 0.001).set_sensitivity(0.1)
+        self.randomiser = dp.mechanisms.Gaussian().set_epsilon_delta(1, 0.001).set_sensitivity(0.1)
 
     def add_noise_to_param(self, param: Parameter) -> Tensor:
         """
