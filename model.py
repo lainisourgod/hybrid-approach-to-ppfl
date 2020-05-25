@@ -3,48 +3,60 @@ from typing import List
 import numpy as np
 import torch
 from torch import Tensor
-from torch.nn import Linear, Parameter
+from torch import nn
+from torch.nn import Parameter
 from torch.optim import Adam
 from torch.functional import F
 
 from config import config, Batch
 
 
-class Model(torch.nn.Module):
+class SimpleLinear(torch.nn.Module):
     """Simple model for simple purposes"""
-
-    optimizer: torch.optim.Optimizer
 
     def __init__(self, in_size: int, out_size: int):
         super().__init__()
 
-        self.linear = Linear(in_size, out_size)
-        self.optimizer = Adam(self.parameters(), lr=config.learning_rate)
+        self.linear = nn.Linear(in_size, out_size)
 
     def forward(self, x: Tensor) -> Tensor:
-        return torch.relu(  # SOTA activation
-            self.linear(  # SOTA model
-                x.view(x.size(0), -1)  # Make it flat
-            )
-        )
+        x = x.view(x.size(0), -1)  # Make it flat
+        x = self.linear(x)
+        x = torch.relu(x)
 
-    def training_step(self, batch) -> List[Parameter]:
-        """Forward and backward pass"""
-        features, target = batch
-        features, target = features.to(config.device), target.to(config.device)
-        self.optimizer.zero_grad()
-        pred = self.forward(features)
-        loss: Tensor = F.nll_loss(pred, target)
-        loss.backward()
-        self.optimizer.step()
+        output = F.log_softmax(x, dim=1)
 
-        return list(self.parameters())
+        return output
 
-    def update_params(self, new_params: Tensor) -> None:
-        with torch.no_grad():
-            for model_param, new_param in zip(self.parameters(), new_params):
-                # Reshape new param and assign into model
-                model_param.data = new_param.view_as(model_param.data).to(config.device)
+
+class SimpleCNN(torch.nn.Module):
+    """Simple model for simple purposes"""
+
+    def __init__(self, in_size: int, out_size: int):
+        super().__init__()
+
+        self.conv1 = nn.Conv2d(1, 32, 3, 1)
+        self.conv2 = nn.Conv2d(32, 64, 3, 1)
+        self.dropout1 = nn.Dropout2d(0.25)
+        self.dropout2 = nn.Dropout2d(0.5)
+        self.fc1 = nn.Linear(9216, 128)
+        self.fc2 = nn.Linear(128, 10)
+
+    def forward(self, x: Tensor) -> Tensor:
+        x = self.conv1(x)
+        x = F.relu(x)
+        x = self.conv2(x)
+        x = F.relu(x)
+        x = F.max_pool2d(x, 2)
+        x = self.dropout1(x)
+        x = torch.flatten(x, 1)
+        x = self.fc1(x)
+        x = F.relu(x)
+        x = self.dropout2(x)
+        x = self.fc2(x)
+        output = F.log_softmax(x, dim=1)
+        return output
+
 
 class Net:
     """
@@ -76,4 +88,8 @@ class Net:
     def gradient_step(self, gradient, eta=0.01):
         """Update the model with the given gradient"""
         self.weights -= eta * gradient
+
+
+# Currently used model to import from trainer
+Model = SimpleLinear
 

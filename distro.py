@@ -2,6 +2,7 @@
 # that are not supported with a default library.
 import copy
 import random
+from functools import partial
 from multiprocess import Pool, cpu_count
 from typing import Callable, Iterable, List
 
@@ -11,6 +12,7 @@ import phe
 import torch
 from torch import Tensor
 from torch.nn import Parameter
+from torch.functional import F
 from torch.optim import Adam, Optimizer
 
 from distro_paillier.source import distributed_paillier
@@ -28,9 +30,6 @@ EncryptedParameter = np.ndarray  # [phe.EncryptedNumber]
 use_pool = True
 
 
-decrypt: Callable
-
-
 class Server:
     """Private key holder. Decrypts the average gradient"""
 
@@ -43,18 +42,16 @@ class Server:
 
         self.prikey = Key
         self.pubkey = PublicKey
-        self.shares = SecretKeyShares
-        self.theta = theta
 
-        global decrypt
-        decrypt = lambda cipher: Key.decrypt(
-                    Ciphertext=cipher,
-                    n=config.n_clients,
-                    t=config.threshold,
-                    PublicKey=PublicKey,
-                    SecretKeyShares=SecretKeyShares,
-                    theta=theta
-                )
+        # decrypt takes one argument -- ciphertext to decode
+        self.decrypt = partial(
+            Key.decrypt,
+            n=config.n_clients,
+            t=config.threshold,
+            PublicKey=PublicKey,
+            SecretKeyShares=SecretKeyShares,
+            theta=theta
+        )
 
     def aggregate_params(self, gradients_of_parties: np.ndarray) -> np.ndarray:
         """
@@ -65,9 +62,9 @@ class Server:
 
     def decrypt_param(self, param):
         if use_pool:
-            return pool.map(decrypt, param)
+            return pool.map(self.decrypt, param, chunksize=100)
         else:
-            return [decrypt(num) for num in param]
+            return [self.decrypt(num) for num in param]
 
     def decrypt_aggregate_params(self, aggregate_params: np.ndarray) -> List[Tensor]:
         """
@@ -86,14 +83,18 @@ class Server:
 
         return decrypted_params
 
-
 class Party:
     """
     Using public key can encrypt locally trained model.
     """
+    optimizer: torch.optim.Optimizer
+    model: Model
+    pubkey: phe.PaillierPublicKey
+    randomiser: dp.mechanisms.DPMechanism
+
     def __init__(self, pubkey: phe.PaillierPublicKey, model: Model):
         self.model: Model = copy.deepcopy(model).to(config.device)
-        self.optimizer = Adam(self.model.parameters(), lr=0.02)
+        self.optimizer = Adam(self.model.parameters(), lr=config.learning_rate)
 
         self.pubkey = pubkey
         self.randomiser = dp.mechanisms.Gaussian().set_epsilon_delta(0.5, 0.001).set_sensitivity(0.1)
@@ -128,12 +129,13 @@ class Party:
 
         Return list of flattened encrypted params.
         """
-        self.model.training_step(batch)
+        # Train for one epoch
+        self.training_step(batch)
 
+        # Get params after one epoch
         params = self.model.parameters()
         encrypted_params: List[np.ndarray] = []
 
-        # TODO: maybe map all this operations to pool?
         for param in params:
             # Flatten
             flattened = param.data.view(-1)
@@ -152,15 +154,26 @@ class Party:
         return encrypted_params
 
     def encrypt_param(self, param):
+        encrypt = partial(self.pubkey.encrypt, precision=0.01)
         if use_pool:
-            return np.array(pool.map(self.pubkey.encrypt, param))
+            return np.array(pool.map(encrypt, param, chunksize=300))
         else:
-            return np.array([self.pubkey.encrypt(num) for num in param])
+            return np.array([encrypt(num) for num in param])
 
     def update_params(self, new_params: Tensor) -> None:
-        """
-        Copy data from new parameters into party's model.
-        Async because party can be somewhere far away...
-        """
-        self.model.update_params(new_params)
+        """Copy data from new parameters into party's model."""
+        with torch.no_grad():
+            for model_param, new_param in zip(self.model.parameters(), new_params):
+                # Reshape new param and assign into model
+                model_param.data = new_param.view_as(model_param.data).to(config.device)
+
+    def training_step(self, batch) -> List[Parameter]:
+        """Forward and backward pass"""
+        features, target = batch
+        features, target = features.to(config.device), target.to(config.device)
+        self.optimizer.zero_grad()
+        pred = self.model.forward(features)
+        loss: Tensor = F.nll_loss(pred, target)
+        loss.backward()
+        self.optimizer.step()
 

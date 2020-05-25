@@ -4,6 +4,7 @@ from typing import List
 
 import torch
 import torch.nn.functional as F
+from torch import Tensor
 from torch.utils.data import DataLoader
 
 from config import config
@@ -83,7 +84,7 @@ class Trainer:
                 # Test
                 if batch_idx % config.test_every == 0:
                     # Update local model for test
-                    self.model.update_params(new_params)
+                    self.update_params(new_params)
                     self.test_model()
 
     def test_model(self):
@@ -103,4 +104,11 @@ class Trainer:
         print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
             test_loss, correct, len(self.valid_loader.dataset),
             100. * correct / len(self.valid_loader.dataset)))
+
+    def update_params(self, new_params: Tensor) -> None:
+        """Copy data from new parameters into party's model."""
+        with torch.no_grad():
+            for model_param, new_param in zip(self.model.parameters(), new_params):
+                # Reshape new param and assign into model
+                model_param.data = new_param.view_as(model_param.data).to(config.device)
 

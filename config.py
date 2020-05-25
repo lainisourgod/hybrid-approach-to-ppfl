@@ -7,7 +7,7 @@ from torch import Tensor
 
 @dataclass
 class Config:
-    n_clients: int = 4
+    n_clients: int = 3
     threshold: int = 1
     batch_size: int = 64
     key_length: int = 128
