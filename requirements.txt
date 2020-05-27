@@ -2,6 +2,6 @@
 phe
 gmpy2
 sympy
-sklearn
 multiproces
+torch
 
