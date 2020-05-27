@@ -180,13 +180,3 @@ class Party:
                 # Reshape new param and assign into model
                 model_param.data = new_param.view_as(model_param.data).to(config.device)
 
-    def training_step(self, batch) -> List[Parameter]:
-        """Forward and backward pass"""
-        features, target = batch
-        features, target = features.to(config.device), target.to(config.device)
-        self.optimizer.zero_grad()
-        pred = self.model.forward(features)
-        loss: Tensor = F.nll_loss(pred, target)
-        loss.backward()
-        self.optimizer.step()
-

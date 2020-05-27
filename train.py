@@ -9,7 +9,7 @@ from torch.utils.data import DataLoader
 
 from config import config
 from distro import Party, Server
-from model import Model
+from model import Model, SimpleRNN
 
 
 class Trainer:
@@ -28,7 +28,11 @@ class Trainer:
 
         # Create default model that will be source of truth for every other model
         # Dimensions from MNIST
-        self.model = Model(in_size=28 * 28, out_size=10)
+        if Model == SimpleRNN:
+            #  n_letters, hidden_size, n_categories
+            self.model = Model(in_size=58, hidden_size=128, out_size=18)
+        else:
+            self.model = Model(in_size=28 * 28, out_size=10)
 
         self.configure_system()
 
@@ -51,6 +55,14 @@ class Trainer:
         for party_index in range(config.n_clients):
             features_party = features[party_index::config.n_clients]
             target_party = target[party_index::config.n_clients]
+
+            # If batch_size == 1, remove batch dimension (for RNN)
+            if len(features_party) == 1:
+                features_party = features_party[0][0]
+
+            if len(target_party) == 1:
+                target_party = target_party[0][0]
+
             batches.append((features_party, target_party))
 
         return batches
@@ -93,9 +105,15 @@ class Trainer:
         correct = 0
         with torch.no_grad():
             for features, target in self.valid_loader:
+                if isinstance(features, list):
+                    features = features[0][0]
+                    target = target[0][0]
+
                 features, target = features.to(config.device), target.to(config.device)
+
                 output = self.model(features)
                 test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
+
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
                 correct += pred.eq(target.view_as(pred)).sum().item()
 

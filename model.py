@@ -58,38 +58,31 @@ class SimpleCNN(torch.nn.Module):
         return output
 
 
-class Net:
-    """
-    Runs linear regression with local data or by gradient steps,
-    where gradient can be passed in.
-    """
+class SimpleRNN(nn.Module):
+    def __init__(self, in_size, hidden_size, out_size):
+        super().__init__()
 
-    def __init__(self, X: np.array, y: np.array):
-        self.X, self.y = X, y
-        self.weights = np.zeros(X.shape[1])
+        self.hidden_size = hidden_size
 
-    def predict(self, X) -> np.array:
-        """Use model"""
-        return X.dot(self.weights)
+        self.i2h = nn.Linear(in_size + hidden_size, hidden_size)
+        self.i2o = nn.Linear(in_size + hidden_size, out_size)
+        self.softmax = nn.LogSoftmax(dim=1)
 
-    def fit(self, n_iter, eta=0.01):
-        """Linear regression for n_iter"""
-        for _ in range(n_iter):
-            gradient = self.compute_gradient()
-            self.gradient_step(gradient, eta)
+    def forward(self, sequence):
+        hidden = self.init_hidden().to(config.device)
 
-    def compute_gradient(self) -> np.array:
-        """
-        Compute the gradient of the current model using the training set
-        """
-        delta = self.predict(self.X) - self.y
-        return delta.dot(self.X) / len(self.X)
+        for char in sequence:
+            combined = torch.cat((char, hidden), 1)
+            hidden = self.i2h(combined)
+            output = self.i2o(combined)
+            output = self.softmax(output)
 
-    def gradient_step(self, gradient, eta=0.01):
-        """Update the model with the given gradient"""
-        self.weights -= eta * gradient
+        return output
+
+    def init_hidden(self):
+        return torch.zeros(1, self.hidden_size)
 
 
 # Currently used model to import from trainer
-Model = SimpleLinear
+Model = SimpleRNN
 
