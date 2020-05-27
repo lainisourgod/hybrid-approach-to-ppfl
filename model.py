@@ -1,4 +1,6 @@
-from typing import List
+from __future__ import annotations
+
+from typing import List, Union
 
 import numpy as np
 import torch
@@ -9,6 +11,11 @@ from torch.optim import Adam
 from torch.functional import F
 
 from config import config, Batch
+
+
+# Currently used model to import from trainer
+# Value is set in `main` script of experiment
+Model: Union[SimpleLinear, SimpleCNN, SimpleRNN]
 
 
 class SimpleLinear(torch.nn.Module):
@@ -81,8 +88,4 @@ class SimpleRNN(nn.Module):
 
     def init_hidden(self):
         return torch.zeros(1, self.hidden_size)
-
-
-# Currently used model to import from trainer
-Model = SimpleRNN
 

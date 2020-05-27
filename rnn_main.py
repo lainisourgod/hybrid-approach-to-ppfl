@@ -7,6 +7,10 @@ from pathlib import Path
 from typing import Iterator, List, Tuple
 
 
+# Set model before any other import so all scripts use the same class
+import model
+model.Model = model.SimpleRNN
+
 from config import config
 from train import Trainer
 

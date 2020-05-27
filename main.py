@@ -11,6 +11,10 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision.datasets import MNIST
 from torchvision import transforms
 
+import model
+# Set model before any other import so all scripts use the same class
+model.Model = model.SimpleLinear
+
 from config import config, Batch
 from train import Trainer
 
