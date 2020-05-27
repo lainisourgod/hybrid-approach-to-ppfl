@@ -4,7 +4,7 @@ import copy
 import random
 from functools import partial
 from multiprocess import Pool, cpu_count
-from typing import Callable, Iterable, List
+from typing import Callable, Iterable, List, Tuple
 
 import diffprivlib as dp
 import numpy as np
@@ -19,7 +19,7 @@ from distro_paillier.source import distributed_paillier
 from distro_paillier.source.distributed_paillier import generate_shared_paillier_key
 
 from config import config
-from model import Model
+from model import Model, SimpleRNN
 
 
 n_cpus = cpu_count()
@@ -152,6 +152,19 @@ class Party:
             encrypted_params.append(encrypted)
 
         return encrypted_params
+
+    def training_step(self, batch: Tuple[Tensor, Tensor]) -> List[Parameter]:
+        """Forward and backward pass"""
+        features, target = batch
+        features, target = features.to(config.device), target.to(config.device)
+        self.optimizer.zero_grad()
+
+        pred = self.model(features)
+
+        loss: Tensor = F.nll_loss(pred, target)
+
+        loss.backward()
+        self.optimizer.step()
 
     def encrypt_param(self, param):
         encrypt = partial(self.pubkey.encrypt, precision=0.01)
