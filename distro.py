@@ -141,8 +141,8 @@ class Party:
             flattened = param.data.view(-1)
 
             # Add noise for diffential privacy
-            noised = self.add_noise_to_param(flattened)
-            print(f"diff: {((noised - flattened).abs() / flattened).mean():.3}")
+            #  noised = self.add_noise_to_param(flattened)
+            #  print(f"diff: {((noised - flattened).abs() / flattened).mean():.3}")
 
             # Convert to list so phe can work with it
             #  noised = noised.tolist()
@@ -157,12 +157,12 @@ class Party:
     def training_step(self, batch: Tuple[Tensor, Tensor]) -> List[Parameter]:
         """Forward and backward pass"""
         features, target = batch
-        features, target = features.to(config.device), target.to(config.device)
+        #  features, target = features.to(config.device), target.to(config.device)
         self.optimizer.zero_grad()
 
         pred = self.model(features)
 
-        loss: Tensor = F.cross_entropy(pred, target)
+        loss: Tensor = F.nll_loss(pred, target)
 
         loss.backward()
         self.optimizer.step()

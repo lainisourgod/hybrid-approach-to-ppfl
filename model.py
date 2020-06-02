@@ -13,11 +13,6 @@ from torch.functional import F
 from config import config, Batch
 
 
-# Currently used model to import from trainer
-# Value is set in `main` script of experiment
-Model: Union[SimpleLinear, SimpleCNN, SimpleRNN]
-
-
 class SimpleLinear(torch.nn.Module):
     """Simple model for simple purposes"""
 
@@ -31,7 +26,7 @@ class SimpleLinear(torch.nn.Module):
         x = self.linear(x)
         x = torch.relu(x)
 
-        #  output = F.log_softmax(x, dim=1)
+        output = F.log_softmax(x, dim=1)
 
         return x
 
@@ -61,23 +56,48 @@ class SimpleCNN(torch.nn.Module):
         x = F.relu(x)
         x = self.dropout2(x)
         x = self.fc2(x)
-        #  output = F.log_softmax(x, dim=1)
+        output = F.log_softmax(x, dim=1)
         return x
 
 
 class SimpleRNN(nn.Module):
+    """
+    Inputs:
+        in_size = size of vocabulary
+        out_size = num of categories
+    """
     def __init__(self, in_size, hidden_size, out_size):
         super().__init__()
 
         self.hidden_size = hidden_size
-        self.rnn = nn.GRU(in_size, hidden_size, num_layers=1, batch_first=True)
+        self.embedding = nn.Embedding(in_size, hidden_size)
+        self.rnn = nn.GRU(hidden_size, hidden_size, num_layers=1, batch_first=True)
         self.out = nn.Linear(hidden_size, out_size)
 
     def forward(self, inputs):
-        inputs = inputs.view(-1, 28, 28)
+        #  inputs = inputs.view(-1, 28, 28)
+
+        embedded = self.embedding(inputs)
+
+        #  input_lengths = torch.LongTensor(
+            #  [t[t != 0].size() for t in inputs]
+        #  ).squeeze(1)
+
+        #  packed = torch.nn.utils.rnn.pack_padded_sequence(embedded, input_lengths, batch_first=True, enforce_sorted=False)
+
         self.rnn.flatten_parameters()
-        out, _ = self.rnn(inputs)
+        out, _ = self.rnn(embedded)
+
+        #  out, _ = torch.nn.utils.rnn.pad_packed_sequence(out, batch_first=True)  # unpack (back to padded)
+
         out = self.out(out)
         out = out[:, -1, :]  # at last timestep
+
+        out = F.log_softmax(out, dim=1)
+
         return out
+
+
+# Currently used model to import from trainer
+Model = Union[SimpleLinear, SimpleCNN, SimpleRNN]
 

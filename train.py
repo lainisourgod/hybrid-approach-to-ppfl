@@ -17,23 +17,16 @@ class Trainer:
     Performs learning with hybrid approach.
     Uses asyncio for emulating different parties.
     """
+    model: Model
     train_loader: DataLoader
     valid_loader: DataLoader
     server: Server
     parties: List[Party]
 
-    def __init__(self, train_loader: DataLoader, valid_loader: DataLoader):
+    def __init__(self, model: Model, train_loader: DataLoader, valid_loader: DataLoader):
         self.train_loader = train_loader
         self.valid_loader = valid_loader
-
-        # Create default model that will be source of truth for every other model
-        # Dimensions from MNIST
-        if Model == SimpleRNN:
-            #  n_letters, hidden_size, n_categories
-            #  self.model = Model(in_size=58, hidden_size=128, out_size=18)
-            self.model = Model(in_size=28, hidden_size=64, out_size=10)
-        else:
-            self.model = Model(in_size=28 * 28, out_size=10)
+        self.model = model
 
         self.configure_system()
 
@@ -101,7 +94,7 @@ class Trainer:
                 features, target = features.to(config.device), target.to(config.device)
 
                 output = self.model(features)
-                test_loss += F.cross_entropy(output, target, reduction='sum').item()  # sum up batch loss
+                test_loss += F.nll_loss(output, target, reduction='sum').item()  # sum up batch loss
 
                 pred = output.argmax(dim=1, keepdim=True)  # get the index of the max log-probability
                 correct += pred.eq(target.view_as(pred)).sum().item()

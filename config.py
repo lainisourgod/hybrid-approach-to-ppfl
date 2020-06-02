@@ -9,11 +9,11 @@ from torch import Tensor
 class Config:
     n_clients: int = 3
     threshold: int = 1
-    batch_size: int = 64
+    batch_size: int = 1000
     key_length: int = 128
-    n_epochs: int = 10
-    learning_rate: float = 0.01
-    print_every: int = 10
+    n_epochs: int = 300
+    learning_rate: float = 0.05
+    hidden_size: int = 64
     test_every: int = 3
     device: torch.device = torch.device('cuda')
 
