@@ -31,9 +31,9 @@ class SimpleLinear(torch.nn.Module):
         x = self.linear(x)
         x = torch.relu(x)
 
-        output = F.log_softmax(x, dim=1)
+        #  output = F.log_softmax(x, dim=1)
 
-        return output
+        return x
 
 
 class SimpleCNN(torch.nn.Module):
@@ -61,8 +61,8 @@ class SimpleCNN(torch.nn.Module):
         x = F.relu(x)
         x = self.dropout2(x)
         x = self.fc2(x)
-        output = F.log_softmax(x, dim=1)
-        return output
+        #  output = F.log_softmax(x, dim=1)
+        return x
 
 
 class SimpleRNN(nn.Module):
@@ -70,22 +70,14 @@ class SimpleRNN(nn.Module):
         super().__init__()
 
         self.hidden_size = hidden_size
+        self.rnn = nn.GRU(in_size, hidden_size, num_layers=1, batch_first=True)
+        self.out = nn.Linear(hidden_size, out_size)
 
-        self.i2h = nn.Linear(in_size + hidden_size, hidden_size)
-        self.i2o = nn.Linear(in_size + hidden_size, out_size)
-        self.softmax = nn.LogSoftmax(dim=1)
-
-    def forward(self, sequence):
-        hidden = self.init_hidden().to(config.device)
-
-        for char in sequence:
-            combined = torch.cat((char, hidden), 1)
-            hidden = self.i2h(combined)
-            output = self.i2o(combined)
-            output = self.softmax(output)
-
-        return output
-
-    def init_hidden(self):
-        return torch.zeros(1, self.hidden_size)
+    def forward(self, inputs):
+        inputs = inputs.view(-1, 28, 28)
+        self.rnn.flatten_parameters()
+        out, _ = self.rnn(inputs)
+        out = self.out(out)
+        out = out[:, -1, :]  # at last timestep
+        return out
 

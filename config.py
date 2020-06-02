@@ -12,9 +12,9 @@ class Config:
     batch_size: int = 64
     key_length: int = 128
     n_epochs: int = 10
-    learning_rate: float = 0.0001
+    learning_rate: float = 0.01
     print_every: int = 10
-    test_every: int = 30
+    test_every: int = 3
     device: torch.device = torch.device('cuda')
 
 

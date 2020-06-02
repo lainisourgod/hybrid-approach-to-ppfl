@@ -19,7 +19,7 @@ from distro_paillier.source import distributed_paillier
 from distro_paillier.source.distributed_paillier import generate_shared_paillier_key
 
 from config import config
-from model import Model, SimpleRNN
+from model import Model
 
 
 n_cpus = cpu_count()
@@ -97,7 +97,7 @@ class Party:
         self.optimizer = Adam(self.model.parameters(), lr=config.learning_rate)
 
         self.pubkey = pubkey
-        self.randomiser = dp.mechanisms.Gaussian().set_epsilon_delta(1, 0.001).set_sensitivity(0.1)
+        self.randomiser = dp.mechanisms.Gaussian().set_epsilon_delta(1, 0.9).set_sensitivity(0.1)
 
     def add_noise_to_param(self, param: Parameter) -> Tensor:
         """
@@ -145,7 +145,8 @@ class Party:
             print(f"diff: {((noised - flattened).abs() / flattened).mean():.3}")
 
             # Convert to list so phe can work with it
-            noised = noised.tolist()
+            #  noised = noised.tolist()
+            noised = flattened.tolist()
 
             # Encrypt in multiprocessing
             encrypted: EncryptedParameter = self.encrypt_param(noised)
@@ -161,7 +162,7 @@ class Party:
 
         pred = self.model(features)
 
-        loss: Tensor = F.nll_loss(pred, target)
+        loss: Tensor = F.cross_entropy(pred, target)
 
         loss.backward()
         self.optimizer.step()

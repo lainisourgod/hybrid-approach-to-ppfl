@@ -13,7 +13,7 @@ from torchvision import transforms
 
 import model
 # Set model before any other import so all scripts use the same class
-model.Model = model.SimpleLinear
+model.Model = model.SimpleRNN
 
 from config import config, Batch
 from train import Trainer
