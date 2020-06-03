@@ -22,6 +22,7 @@ class Trainer:
     valid_loader: DataLoader
     server: Server
     parties: List[Party]
+    start_time: float
 
     def __init__(self, model: Model, train_loader: DataLoader, valid_loader: DataLoader):
         self.train_loader = train_loader
@@ -29,6 +30,7 @@ class Trainer:
         self.model = model
 
         self.configure_system()
+        self.start_time = 0
 
     def configure_system(self):
         """
@@ -54,11 +56,10 @@ class Trainer:
         return batches
 
     def fit(self):
-        for epoch in range(config.n_epochs):
-            epoch_start = time.time()
-            for batch_idx, (features, target) in enumerate(self.train_loader):
-                print(f"Epoch {epoch} Batch {batch_idx} Time {time.time() - epoch_start:.4}")
+        self.start_time = time.time()
 
+        for epoch in range(config.n_epochs):
+            for batch_idx, (features, target) in enumerate(self.train_loader):
                 # Divide one big batch into parties' batches
                 batches_for_epoch = self.separate_clients_batches(features, target)
 
@@ -101,9 +102,12 @@ class Trainer:
 
         test_loss /= len(self.valid_loader.dataset)
 
-        print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n'.format(
-            test_loss, correct, len(self.valid_loader.dataset),
-            100. * correct / len(self.valid_loader.dataset)))
+        print('\nTest set: Average loss: {:.4f}, Accuracy: {}/{} ({:.0f}%)\n Time: {:.0f}'.format(
+                test_loss, correct, len(self.valid_loader.dataset),
+                100. * correct / len(self.valid_loader.dataset),
+                time.time() - self.start_time
+            ),
+        )
 
     def update_params(self, new_params: Tensor) -> None:
         """Copy data from new parameters into party's model."""

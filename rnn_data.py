@@ -46,19 +46,19 @@ class NamesDataset(Dataset):
     def read_samples(self):
         dataset_path: Path = Path(__file__).parent / 'data' / 'names'
 
-        for file in dataset_path.iterdir():
-            # Autocompletion hack
-            file: Path
+        # Autocompletion hack
+        file: Path
 
+        for file in dataset_path.iterdir():
             # Get language
             lang: str = file.stem
             self.langs.append(lang)
 
+            # Autocompletion hack
+            line: str
+
             # Get all names of this language
             for line in file.open('r'):
-                # Autocompletion hack
-                line: str
-
                 # Remove whitespace
                 name = line.strip()
 
