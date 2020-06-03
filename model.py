@@ -79,16 +79,8 @@ class SimpleRNN(nn.Module):
 
         embedded = self.embedding(inputs)
 
-        #  input_lengths = torch.LongTensor(
-            #  [t[t != 0].size() for t in inputs]
-        #  ).squeeze(1)
-
-        #  packed = torch.nn.utils.rnn.pack_padded_sequence(embedded, input_lengths, batch_first=True, enforce_sorted=False)
-
         self.rnn.flatten_parameters()
         out, _ = self.rnn(embedded)
-
-        #  out, _ = torch.nn.utils.rnn.pad_packed_sequence(out, batch_first=True)  # unpack (back to padded)
 
         out = self.out(out)
         out = out[:, -1, :]  # at last timestep

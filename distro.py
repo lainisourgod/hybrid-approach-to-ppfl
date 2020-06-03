@@ -34,6 +34,11 @@ class Server:
     """Private key holder. Decrypts the average gradient"""
 
     def __init__(self):
+        if not config.use_he:
+            # pubkey mock
+            self.pubkey = phe.PaillierPublicKey(1)
+            return
+
         Key, _, _, _, PublicKey, _, _, SecretKeyShares, theta = generate_shared_paillier_key(
             keyLength=config.key_length,
             n=config.n_clients,
@@ -60,7 +65,10 @@ class Server:
         """
         return np.mean(gradients_of_parties, axis=0)
 
-    def decrypt_param(self, param):
+    def decrypt_param(self, param: List[phe.EncryptedNumber]) -> List[float]:
+        if not config.use_he:
+            return param
+
         if use_pool:
             return pool.map(self.decrypt, param, chunksize=100)
         else:
@@ -71,7 +79,7 @@ class Server:
         Take encrypted aggregate params.
         Return decrypted params.
         """
-        decrypted_params: List[Parameter] = []
+        decrypted_params: List[Tensor] = []
 
         for param in aggregate_params:
             # To list so we can use decrypt on it
@@ -82,6 +90,7 @@ class Server:
             decrypted_params.append(decrypted_param)
 
         return decrypted_params
+
 
 class Party:
     """
@@ -98,26 +107,6 @@ class Party:
 
         self.pubkey = pubkey
         self.randomiser = dp.mechanisms.Gaussian().set_epsilon_delta(1, 0.9).set_sensitivity(0.1)
-
-    def add_noise_to_param(self, param: Parameter) -> Tensor:
-        """
-        Add noise from diffential privacy mechanism.
-        param: 1-D (flattened) Parameter
-        return Tensor of param's data with applied DP.
-        """
-        param_mean = param.data.mean()
-        param_std = param.data.std()
-
-        # Scale to normal distribution as distribution of randomiser is normal
-        param_in_normal_distribution = (param.data - param_mean) / param_std
-
-        randomised = [self.randomiser.randomise(num.item()) for num in param_in_normal_distribution]
-        randomised_tensor = torch.Tensor(randomised).to(config.device)
-
-        # Rescale results back
-        randomised_tensor = randomised_tensor * param_std + param_mean
-
-        return randomised_tensor
 
     def train_one_epoch(self, batch) -> List[EncryptedParameter]:
         """
@@ -141,12 +130,10 @@ class Party:
             flattened = param.data.view(-1)
 
             # Add noise for diffential privacy
-            #  noised = self.add_noise_to_param(flattened)
-            #  print(f"diff: {((noised - flattened).abs() / flattened).mean():.3}")
+            noised = self.add_noise_to_param(flattened)
 
             # Convert to list so phe can work with it
-            #  noised = noised.tolist()
-            noised = flattened.tolist()
+            noised = noised.tolist()
 
             # Encrypt in multiprocessing
             encrypted: EncryptedParameter = self.encrypt_param(noised)
@@ -167,8 +154,43 @@ class Party:
         loss.backward()
         self.optimizer.step()
 
-    def encrypt_param(self, param):
-        encrypt = partial(self.pubkey.encrypt, precision=0.01)
+    def add_noise_to_param(self, param: Parameter) -> Tensor:
+        """
+        Add noise from diffential privacy mechanism.
+        param: 1-D (flattened) Parameter
+        return Tensor of param's data with applied DP.
+        """
+        # DP mock
+        if not config.use_dp:
+            return param.data
+
+        param_mean = param.data.mean()
+        param_std = param.data.std()
+
+        # Scale to normal distribution as distribution of randomiser is normal
+        param_in_normal_distribution = (param.data - param_mean) / param_std
+
+        randomised = [self.randomiser.randomise(num.item()) for num in param_in_normal_distribution]
+        randomised_tensor = torch.Tensor(randomised).to(config.device)
+
+        # Rescale results back
+        randomised_tensor = randomised_tensor * param_std + param_mean
+
+        # Count difference between noised and original parameter data for debug
+        diff_abs = (randomised_tensor - param.data).abs()
+        diff_rel = diff_abs / param.data
+        mean_diff = diff_rel.mean()
+
+        print(f"diff: {mean_diff:.3}")
+
+        return randomised_tensor
+
+    def encrypt_param(self, param: List[float]) -> EncryptedParameter:
+        # HE mock
+        if not config.use_he:
+            return np.array(param)
+
+        encrypt = partial(self.pubkey.encrypt)
         if use_pool:
             return np.array(pool.map(encrypt, param, chunksize=300))
         else:
