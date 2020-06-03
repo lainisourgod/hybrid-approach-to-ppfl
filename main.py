@@ -26,35 +26,44 @@ def timer():
     print('[elapsed time: %.2f s]' % (time.perf_counter() - time0))
 
 
-#  def configure_dataloaders(data_dir: Path) -> Tuple[DataLoader, DataLoader]:
-    #  def create_loader(is_train_loader):
-        #  return DataLoader(
-            #  MNIST(
-                #  data_dir,
-                #  train=is_train_loader,
-                #  download=True,
-                #  transform=transforms.Compose([
-                    #  transforms.ToTensor(),
-                    #  transforms.Normalize((0.1307,), (0.3081,))
-                #  ])
-            #  ),
-            #  # yield batches for every client
-            #  batch_size=config.n_clients * config.batch_size,
-        #  )
-
-    #  return (create_loader(True), create_loader(False))
-
-
 def configure_dataloaders(data_dir: Path) -> Tuple[DataLoader, DataLoader]:
-    def create_loader(is_train_loader):
-        return DataLoader(
-            NamesDataset(),
-            # yield batches for every client
-            batch_size=config.n_clients * config.batch_size,
-            collate_fn=transform_batch
-        )
+    if config.dataset == 'mnist':
+        def create_loader(is_train_loader):
+            return DataLoader(
+                MNIST(
+                    data_dir,
+                    train=is_train_loader,
+                    download=True,
+                    transform=transforms.Compose([
+                        transforms.ToTensor(),
+                        transforms.Normalize((0.1307,), (0.3081,))
+                    ])
+                ),
+                # yield batches for every client
+                batch_size=config.n_parties * config.batch_size,
+            )
+    else:
+        def create_loader(is_train_loader):
+            return DataLoader(
+                NamesDataset(),
+                # yield batches for every client
+                batch_size=config.n_parties * config.batch_size,
+                collate_fn=transform_batch
+            )
 
     return (create_loader(True), create_loader(False))
+
+
+def configure_model() -> torch.nn.Module:
+    if config.dataset == 'mnist':
+        model = SimpleLinear(in_size=28 * 28, out_size=10)
+    else:
+        num_langs = len(loaders[0].dataset.langs)
+        vocab_size = len(loaders[0].dataset.char2index)
+
+        model = SimpleRNN(in_size=vocab_size, hidden_size=config.hidden_size, out_size=num_langs)
+
+    return model
 
 
 if __name__ == '__main__':
@@ -63,11 +72,7 @@ if __name__ == '__main__':
 
     loaders = configure_dataloaders(data_dir)
 
-    num_langs = len(loaders[0].dataset.langs)
-    vocab_size = len(loaders[0].dataset.char2index)
-
-    model = SimpleRNN(in_size=vocab_size, hidden_size=config.hidden_size, out_size=num_langs)
-    #  model = SimpleLinear(in_size=28 * 28, out_size=10)
+    model = configure_model()
 
     trainer = Trainer(
         model=model,

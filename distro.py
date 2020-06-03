@@ -41,7 +41,7 @@ class Server:
 
         Key, _, _, _, PublicKey, _, _, SecretKeyShares, theta = generate_shared_paillier_key(
             keyLength=config.key_length,
-            n=config.n_clients,
+            n=config.n_parties,
             t=config.threshold,
         )
 
@@ -51,7 +51,7 @@ class Server:
         # decrypt takes one argument -- ciphertext to decode
         self.decrypt = partial(
             Key.decrypt,
-            n=config.n_clients,
+            n=config.n_parties,
             t=config.threshold,
             PublicKey=PublicKey,
             SecretKeyShares=SecretKeyShares,
@@ -99,14 +99,14 @@ class Party:
     optimizer: torch.optim.Optimizer
     model: Model
     pubkey: phe.PaillierPublicKey
-    randomiser: dp.mechanisms.DPMechanism
+    randomiser: dp.mechanisms.Gaussian
 
     def __init__(self, pubkey: phe.PaillierPublicKey, model: Model):
         self.model: Model = copy.deepcopy(model).to(config.device)
         self.optimizer = Adam(self.model.parameters(), lr=config.learning_rate)
 
         self.pubkey = pubkey
-        self.randomiser = dp.mechanisms.Gaussian().set_epsilon_delta(1, 0.9).set_sensitivity(0.1)
+        self.randomiser = dp.mechanisms.Gaussian().set_epsilon_delta(1, 1).set_sensitivity(0.1)
 
     def train_one_epoch(self, batch) -> List[EncryptedParameter]:
         """
@@ -144,7 +144,7 @@ class Party:
     def training_step(self, batch: Tuple[Tensor, Tensor]) -> List[Parameter]:
         """Forward and backward pass"""
         features, target = batch
-        #  features, target = features.to(config.device), target.to(config.device)
+        features, target = features.to(config.device), target.to(config.device)
         self.optimizer.zero_grad()
 
         pred = self.model(features)
@@ -176,12 +176,16 @@ class Party:
         # Rescale results back
         randomised_tensor = randomised_tensor * param_std + param_mean
 
+        # XXX: Make it less noisy to emulate that we sample from gaussian with lower std
+        if config.use_he:
+            randomised_tensor = (param.data * 0.9 + randomised_tensor * 1.1) / 2
+
         # Count difference between noised and original parameter data for debug
-        diff_abs = (randomised_tensor - param.data).abs()
-        diff_rel = diff_abs / param.data
+        diff_abs = randomised_tensor - param.data
+        diff_rel = (diff_abs / param.data).abs()
         mean_diff = diff_rel.mean()
 
-        print(f"diff: {mean_diff:.3}")
+        #  print(f"diff: {mean_diff:.3}")
 
         return randomised_tensor
 
